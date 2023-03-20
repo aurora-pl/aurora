@@ -1,0 +1,235 @@
+use crate::lexer;
+use crate::lexer::Tok;
+use crate::lexer::LexicalError;
+use crate::ast::{Expr, BinOp, UnaryOp, AssignOp, Stmt};
+
+grammar;
+
+pub Program: Vec<Box<Stmt>> = {
+    <StatementList>
+};
+
+pub Stmt: Box<Stmt> = {
+    <IfStatement>,
+    <WhileStatement>,
+    <ForStatement>,
+    <AssignStatement>,
+    <AssignIndexStatement>,
+    <FunctionStatement>,
+    <SubStatement>,
+    "return" <Expr> "newline" => Box::new(Stmt::Return(<>)),
+    "break" "newline" => Box::new(Stmt::Break),
+    "continue" "newline" => Box::new(Stmt::Continue),
+    <i:Ident> <p:ExprList> "newline" => Box::new(Stmt::Call(i, p)),
+}
+
+StatementList: Vec<Box<Stmt>> = {
+    (<Stmt>)*
+};
+
+IfStatement: Box<Stmt> = {
+    "if" <Expr> "newline" <StatementList> "else" "newline" <StatementList> "end" "newline" => Box::new(Stmt::If(<>)),
+    "if" <c:Expr> "newline" <t:StatementList> "else" <e:Stmt> => Box::new(Stmt::If(c, t, vec![e])),
+    "if" <c:Expr> "newline" <t:StatementList> "end" "newline" => Box::new(Stmt::If(c, t, vec![])),
+    "if" <c:Expr> <t:Stmt> => Box::new(Stmt::If(c, vec![t], vec![])),
+};
+
+WhileStatement: Box<Stmt> = {
+    "while" <c:Expr> "newline" <b:StatementList> "end" "newline" => Box::new(Stmt::While(c, b)),
+    "while" <c:Expr> <b:Stmt> => Box::new(Stmt::While(c, vec![b])),
+};
+
+ForStatement: Box<Stmt> = {
+    "for" <i:Ident> "," <e:Expr> "newline" <b:StatementList> "end" "newline" => Box::new(Stmt::For(i, e, b)),
+    "for" <i:Ident> "," <e:Expr> <b:Stmt> => Box::new(Stmt::For(i, e, vec![b])),
+};
+
+AssignStatement: Box<Stmt> = {
+    <i:Ident> "=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::Assign, e)),
+    <i:Ident> "+=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::PlusAssign, e)),
+    <i:Ident> "-=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::MinusAssign, e)),
+    <i:Ident> "*=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::StarAssign, e)),
+    <i:Ident> "/=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::SlashAssign, e)),
+    <i:Ident> "%=" <e:Expr> "newline" => Box::new(Stmt::Assign(i, AssignOp::ModAssign, e)),
+};
+
+AssignIndexStatement: Box<Stmt> = {
+    <i:Ident> ":" <e:Expr> "=" <e2:Expr> "newline" => Box::new(Stmt::AssignIndex(i, e, e2)),
+};
+
+IdentList: Vec<String> = {
+    <i:Ident> "," <p:IdentList> => {
+        let mut p = p;
+        p.insert(0, i);
+        p
+    },
+    <i:Ident> => vec![i],
+};
+
+FunctionStatement: Box<Stmt> = {
+    "fn" <i:Ident> <p:IdentList> "newline" <b:StatementList> "end" "newline" => Box::new(Stmt::Func(i, p, b)),
+    "fn" <i:Ident> "newline" <b:StatementList> "end" "newline" => Box::new(Stmt::Func(i, vec![], b)),
+    "fn" <i:Ident> <p:IdentList> "->" <e:Expr> "newline" => Box::new(Stmt::Func(i, p, vec![Box::new(Stmt::Return(e))])),
+    "fn" <i:Ident> "->" <e:Expr> "newline" => Box::new(Stmt::Func(i, vec![], vec![Box::new(Stmt::Return(e))])),
+}
+
+SubStatement: Box<Stmt> = {
+    "sub" <i:Ident> <p:IdentList> "newline" <b:StatementList> "end" "newline" => Box::new(Stmt::Sub(i, p, b)),
+}
+
+pub Expr: Box<Expr> = {
+    <a:And> "or" <e:Expr> => Box::new(Expr::BinOp(a, BinOp::Or, e)),
+    And,
+};
+
+And: Box<Expr> = {
+    <e:Equality> "and" <a:And> => Box::new(Expr::BinOp(e, BinOp::And, a)),
+    Equality,
+};
+
+EqualityOp: BinOp = {
+    "==" => BinOp::Eq,
+    "!=" => BinOp::NotEq,
+};
+
+Equality: Box<Expr> = {
+    Equality EqualityOp Comparison => Box::new(Expr::BinOp(<>)),
+    Comparison,
+};
+
+ComparisonOp: BinOp = {
+    "<" => BinOp::Less,
+    ">" => BinOp::Greater,
+    "<=" => BinOp::LessEq,
+    ">=" => BinOp::GreaterEq,
+};
+
+Comparison: Box<Expr> = {
+    Expr1 ComparisonOp Expr1 => Box::new(Expr::BinOp(<>)),
+    Expr1,
+};
+
+Expr1: Box<Expr> = {
+    Expr1 ExprOp Factor => Box::new(Expr::BinOp(<>)),
+    Factor,
+};
+
+ExprOp: BinOp = {
+    "+" => BinOp::Add,
+    "-" => BinOp::Sub,
+};
+
+UnaryOp: UnaryOp = {
+    "-" => UnaryOp::Neg,
+    "not" => UnaryOp::Not,
+};
+
+Factor: Box<Expr> = {
+    Factor FactorOp Unary => Box::new(Expr::BinOp(<>)),
+    Unary,
+};
+
+FactorOp: BinOp = {
+    "*" => BinOp::Mul,
+    "/" => BinOp::Div,
+    "%" => BinOp::Mod,
+};
+
+Unary: Box<Expr> = {
+    UnaryOp Unary => Box::new(Expr::UnaryOp(<>)),
+    Call,
+};
+
+Call: Box<Expr> = {
+    <i:Call> "(" <p:ExprList> ")" => Box::new(Expr::Call(i, p)),
+    <i:Call> "(" ")" => Box::new(Expr::Call(i, vec![])),
+    <i:Call> ":" <e:Term> => Box::new(Expr::Index(i, e)),
+    Term,
+};
+
+ExprList: Vec<Box<Expr>> = {
+    <Expr> => vec![<>],
+    <e:Expr> "," <l:ExprList> => {
+        let mut v = vec![e];
+        v.extend(l);
+        v
+    },
+};
+
+Term: Box<Expr> = {
+    Num => Box::new(Expr::Number(<>)),
+    String => Box::new(Expr::String(<>)),
+    Ident => Box::new(Expr::Variable(<>)),
+    Boolean => Box::new(Expr::Boolean(<>)),
+    "{" <ExprList> "}" => Box::new(Expr::List(<>)),
+    "(" <Expr> ")"
+};
+
+Num: f64 = {
+    "number",
+};
+
+String: String = {
+    "string",
+};
+
+Ident: String = {
+    "ident",
+};
+
+Boolean: bool = {
+    "true" => true,
+    "false" => false,
+};
+
+extern {
+    type Location = usize;
+    type Error = LexicalError;
+
+    enum lexer::Tok {
+        "if" => Tok::If,
+        "else" => Tok::Else,
+        "end" => Tok::End,
+        "while" => Tok::While,
+        "for" => Tok::For,
+        "fn" => Tok::Fn,
+        "sub" => Tok::Sub,
+        "return" => Tok::Return,
+        "break" => Tok::Break,
+        "continue" => Tok::Continue,
+        "end" => Tok::End,
+        "newline" => Tok::Newline,
+        "+" => Tok::Plus,
+        "-" => Tok::Minus,
+        "*" => Tok::Star,
+        "/" => Tok::Slash,
+        "%" => Tok::Mod,
+        "<" => Tok::Less,
+        "<=" => Tok::LessEq,
+        ">" => Tok::Greater,
+        ">=" => Tok::GreaterEq,
+        "==" => Tok::Eq,
+        "!=" => Tok::NotEq,
+        "and" => Tok::And,
+        "or" => Tok::Or,
+        "not" => Tok::Not,
+        "true" => Tok::Boolean(true),
+        "false" => Tok::Boolean(false),
+        "(" => Tok::LParen,
+        ")" => Tok::RParen,
+        "{" => Tok::LBrace,
+        "}" => Tok::RBrace,
+        "," => Tok::Comma,
+        ":" => Tok::Colon,
+        "=" => Tok::Assign,
+        "+=" => Tok::PlusAssign,
+        "-=" => Tok::MinusAssign,
+        "*=" => Tok::StarAssign,
+        "/=" => Tok::SlashAssign,
+        "%=" => Tok::ModAssign,
+        "->" => Tok::Arrow,
+        "string" => Tok::String(<String>),
+        "number" => Tok::Number(<f64>),
+        "ident" => Tok::Identifier(<String>),
+    }
+}
