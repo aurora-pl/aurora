@@ -16,6 +16,7 @@ fn parse_phone number
   return { parsed:0, parsed:1, parsed:2 }
 end
 ```
+<br>
 
 ## Safety in mind.
 
