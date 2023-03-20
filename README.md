@@ -6,9 +6,7 @@ A dynamically-type ahead-of-time compiled programming language for automation, g
 <img src="https://github.com/aurora-pl/resources/raw/171834311f8be5b95f3e64d49e6536bdc10b1834/carbon(1).png" width="50%" height="50%" align="left">
 
 ## A perl for the modern age.
-
 Automate tasks and parse text with ease. The Aurora Standard Library* provides you with all you need to get started.
-
 ```
 fn parse_phone number
   pattern = "({}) {}-{}"
