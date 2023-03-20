@@ -36,6 +36,8 @@ do_stuff
 
 Aurora transpiles to C++, so a C++ compiler is required. The Aurora compiler is written in Rust.
 
+`AuroraRuntime.h` must be in `/usr/include`, or wherever your compiler's include path is.
+
 TO-DO: elaborate
 
 *note: Aurora is in extreme alpha. The standard library barely exists currently.
