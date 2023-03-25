@@ -4,7 +4,7 @@
 
 A dynamic ahead-of-time compiled programming language for general scripting and automation.
 
-## A perl for the modern age.
+## An automation tool for the modern age.
 
 <img src="https://github.com/aurora-pl/resources/raw/171834311f8be5b95f3e64d49e6536bdc10b1834/carbon(1).png" width="50%" align="left">
 
