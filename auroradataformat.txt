@@ -1,0 +1,14 @@
+{
+    field: value
+    anotherField: value
+    a, b, c: value
+    a: value, b: value, c: value
+    `a`: value, `b`: value, `c`: value
+
+    bigText: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    (1): 2
+
+    another: {
+        moreStuff: true
+    }
+}
