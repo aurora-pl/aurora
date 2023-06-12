@@ -1,4 +1,4 @@
-abstract class Expr(val line: Int, val column: Int) {
+abstract class Expr(open val line: Int, open val column: Int) {
     interface Visitor<T> {
         fun visit(expr: Binary): T;
         fun visit(expr: Unary): T;
@@ -8,6 +8,8 @@ abstract class Expr(val line: Int, val column: Int) {
         fun visit(expr: Index): T;
         fun visit(expr: MapLiteral): T;
         fun visit(expr: Call): T;
+        fun visit(expr: Lambda): T;
+        fun visit(expr: DoBlock): T;
     }
 
     abstract fun <T> accept(visitor: Visitor<T>): T;
@@ -27,6 +29,9 @@ abstract class Stmt(open val line: Int, open val column: Int) {
         fun visit(stmt: AssignIndex): T;
         fun visit(stmt: CallStmt): T;
         fun visit(stmt: Block): T;
+
+        fun visit(stmt: Switch): T;
+        fun visit(stmt: Select): T;
     }
 
     abstract fun <T> accept(visitor: Visitor<T>): T;
@@ -62,6 +67,18 @@ data class ListLiteral(val elements: List<Expr>)
         visitor.visit(this)
 }
 
+data class DoBlock(val args: List<Token>, val body: Stmt, override val line: Int, override val column: Int)
+    : Expr(line, column) {
+    override fun <T> accept(visitor: Visitor<T>): T =
+        visitor.visit(this)
+}
+
+data class Lambda(val args: List<Token>, val body: Stmt, override val line: Int, override val column: Int)
+    : Expr(line, column) {
+    override fun <T> accept(visitor: Visitor<T>): T =
+        visitor.visit(this)
+}
+
 data class Index(val list: Expr, val index: Expr)
     : Expr(list.line, list.column) {
     override fun <T> accept(visitor: Visitor<T>): T =
@@ -74,8 +91,8 @@ data class MapLiteral(val pairs: List<Pair<Expr, Expr>>)
         visitor.visit(this)
 }
 
-data class Call(val callee: Expr, val paren: Token, val arguments: List<Expr>)
-    : Expr(paren.line, paren.column) {
+data class Call(val callee: Expr, val arguments: List<Expr>, override val line: Int, override val column: Int)
+    : Expr(line, column) {
     override fun <T> accept(visitor: Visitor<T>): T =
         visitor.visit(this)
 }
@@ -148,6 +165,18 @@ data class CallStmt(val callee: Expr, val arguments: List<Expr>, override val li
 
 data class Block(val statements: List<Stmt>)
     : Stmt(statements.first().line, statements.first().column) {
+    override fun <T> accept(visitor: Visitor<T>): T =
+        visitor.visit(this)
+}
+
+data class Switch(val value: Expr, val cases: List<Pair<Expr, Stmt>>, val default: Stmt?, override val line: Int, override val column: Int)
+    : Stmt(line, column) {
+    override fun <T> accept(visitor: Visitor<T>): T =
+        visitor.visit(this)
+}
+
+data class Select(val cases: List<Pair<Expr, Stmt>>, val default: Stmt?, override val line: Int, override val column: Int)
+    : Stmt(line, column) {
     override fun <T> accept(visitor: Visitor<T>): T =
         visitor.visit(this)
 }

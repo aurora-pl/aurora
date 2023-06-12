@@ -1,5 +1,7 @@
 import Token.*
 
+object KillStage : Throwable()
+
 class Parser(val tokens: List<Token>) {
     private var current = 0
     private var line = 1
@@ -34,8 +36,10 @@ class Parser(val tokens: List<Token>) {
     private inline fun <reified T> eat(): T =
         if (check<T>())
             advance() as T
-        else
-            throw Exception("Expected ${T::class.java.simpleName} but got ${peek().javaClass.simpleName} instead.")
+        else {
+            Error(peek().line, peek().column, "expected ${T::class.java.simpleName} but got ${peek().javaClass.simpleName} instead", source).print()
+            throw KillStage
+        }
 
     private inline fun <reified T> check() = peek() is T
 
@@ -59,48 +63,64 @@ class Parser(val tokens: List<Token>) {
     }
 
     private fun statement(): Stmt {
+        while(match<Newline>());
         return when (peek()) {
-            is Token.If -> ifStatement()
-            is Token.While -> whileStatement()
+            is Token.If, is Token.Unless -> ifStatement()
+            is Token.While, is Token.Until -> whileStatement()
             is Token.For -> forStatement()
             is Token.Return -> returnStatement()
             is Token.Break -> breakStatement()
             is Token.Continue -> continueStatement()
             is Token.Fn -> functionStatement()
             is Token.Sub -> subStatement()
+            is Token.Select -> selectStatement()
+            is Token.Switch -> switchStatement()
             is Identifier -> {
                 val identifier = eat<Identifier>()
-                if (match<Colon>()) {
-                    var list: Expr = Variable(identifier)
-                    var index = expression()
-                    while(check<Colon>()) {
-                        list = Index(list, index)
-                        index = expression()
-                    }
-                    match<Assign>()
-                    val value = expression()
-                    AssignIndex(list, index, value, identifier.line, identifier.column)
-                } else if(match<Assign>()) {
-                    val value = expression()
-                    Assign(identifier, value, identifier.line, identifier.column)
-                } else {
-                    val args = mutableListOf<Expr>()
-                    if(!check<Newline>()) {
-                        args.add(expression())
-                        while(match<Comma>()) {
-                            args.add(expression())
+                when (peek()) {
+                    is Colon -> {
+                        eat<Colon>()
+                        var list: Expr = Variable(identifier)
+                        var index = expression()
+                        while(check<Colon>()) {
+                            list = Index(list, index)
+                            index = expression()
                         }
+                        match<Assign>()
+                        val value = expression()
+                        AssignIndex(list, index, value, identifier.line, identifier.column)
                     }
-                    CallStmt(Variable(identifier), args, identifier.line, identifier.column)
+                    is Token.Assign -> {
+                        eat<Token.Assign>()
+                        val value = expression()
+                        Assign(identifier, value, identifier.line, identifier.column)
+                    }
+                    else -> {
+                        // put the identifier back
+                        current--
+                        callStmt()
+                    }
                 }
             }
-            else -> throw Exception("Unexpected token ${peek().javaClass.simpleName} at line $line, column $column")
+            else -> {
+                callStmt()
+            }
         }.also {
             if (!match<Eof>())
                 eat<Newline>()
         }
     }
-
+    private fun callStmt(): Stmt {
+        val expr = expression()
+        val args = mutableListOf<Expr>()
+        if(!check<Newline>()) {
+            args.add(expression())
+            while(match<Comma>()) {
+                args.add(expression())
+            }
+        }
+        return CallStmt(expr, args, expr.line, expr.column)
+    }
     private fun primary(): Expr {
         return when (peek()) {
             is Token.Boolean -> {
@@ -125,20 +145,127 @@ class Parser(val tokens: List<Token>) {
                 eat<LBrace>()
                 val pairs = mutableListOf<Pair<Expr, Expr>>()
                 if(!check<RBrace>()) {
-                    pairs.add(Pair(expression(), expression()))
+                    pairs.add(Pair(primary().also { eat<Arrow>() }, expression()))
                     while(match<Comma>() || match<Newline>()) {
-                        pairs.add(Pair(expression().also { eat<Colon>() }, expression()))
+                        pairs.add(Pair(primary().also { eat<Arrow>() }, expression()))
                     }
                 }
                 eat<RBrace>()
                 MapLiteral(pairs)
             }
+            is LBracket -> {
+                eat<LBracket>()
+                val exprs = mutableListOf<Expr>()
+                if(!check<RBracket>()) {
+                    exprs.add(expression())
+                    while(match<Comma>()) {
+                        exprs.add(expression())
+                    }
+                }
+                eat<RBracket>()
+                ListLiteral(exprs)
+            }
             is Identifier -> {
                 val identifier = eat<Identifier>()
                 Variable(identifier)
             }
-            else -> throw Exception("Unexpected token ${peek().javaClass.simpleName} at line $line, column $column")
+            is Token.Lambda -> {
+                val lambda = eat<Token.Lambda>()
+                val args = mutableListOf<Identifier>()
+                if(!check<Arrow>() && !check<Newline>()) {
+                    args.add(eat<Identifier>())
+                    while(match<Comma>()) {
+                        args.add(eat<Identifier>())
+                    }
+                }
+                if (match<Arrow>()) {
+                    val body = expression()
+                    Lambda(args, Return(body, body.line, body.column), lambda.line, lambda.column)
+                } else {
+                    eat<Newline>()
+                    val body = mutableListOf<Stmt>()
+                    while (!check<End>()) {
+                        body.add(statement())
+                    }
+                    eat<End>()
+                    Lambda(args, Block(body), lambda.line, lambda.column)
+                }
+            }
+            is Do -> {
+                val doToken = eat<Do>()
+                val args = mutableListOf<Identifier>()
+                if(!check<Arrow>() && !check<Newline>()) {
+                    args.add(eat<Identifier>())
+                    while(match<Comma>()) {
+                        args.add(eat<Identifier>())
+                    }
+                }
+                if (match<Arrow>()) {
+                    val body = statement()
+                    DoBlock(args, body, doToken.line, doToken.column)
+                } else {
+                    eat<Newline>()
+                    val body = mutableListOf<Stmt>()
+                    while (!check<End>()) {
+                        body.add(statement())
+                    }
+                    eat<End>()
+                    DoBlock(args, Block(body), doToken.line, doToken.column)
+                }
+
+            }
+            else -> {
+                Error(line, column, "expected expression but got ${peek().javaClass.simpleName} instead", source).print()
+                throw KillStage
+            }
         }
+    }
+
+    private fun call(): Expr {
+        var expr = primary()
+        var line = 0
+        var column = 0
+        while (peek().run {
+            if (this is LParen || this is Colon) {
+                line = this.line
+                column = this.column
+                true
+            } else {
+                false
+            }
+        }) {
+            when(peek()) {
+                is LParen -> {
+                    val args = mutableListOf<Expr>()
+                    eat<LParen>()
+                    if(!check<RParen>()) {
+                        args.add(expression())
+                        while(match<Comma>()) {
+                            args.add(expression())
+                        }
+                    }
+                    eat<RParen>()
+                    expr = Call(expr, args, line, column)
+                }
+                is Colon -> {
+                    eat<Colon>()
+                    expr = if(match<Colon>()) {
+                        val list: Expr = expr
+                        val index = eat<Identifier>()
+                        Index(list, Literal(index))
+                    } else {
+                        val list: Expr = expr
+                        val index = primary()
+                        Index(list, index)
+                    }
+                }
+                else -> {
+                    Error(line, column, "expected '(' or ':' but got ${peek().javaClass.simpleName} instead", source).print()
+                    throw KillStage
+                }
+            }
+        }
+        return expr
     }
 
     private fun unary(): Expr {
@@ -147,12 +274,12 @@ class Parser(val tokens: List<Token>) {
             val right = unary()
             return Unary(operator, right)
         }
-        return primary()
+        return call()
     }
 
     private fun multiplication(): Expr {
         var expr = unary()
-        while (check<Star>() || check<Slash>()) {
+        while (check<Star>() || check<Slash>() || check<Dot>() || check<Arrow>()) {
             val operator = advance()
             val right = unary()
             expr = Binary(expr, operator, right)
@@ -216,7 +343,11 @@ class Parser(val tokens: List<Token>) {
 
     private fun ifStatement(): Stmt {
         val ifToken = advance()
-        val expr = expression()
+        val expr = if (ifToken is Token.If) {
+            expression()
+        } else {
+            Unary(Token.Not().new(ifToken.line, ifToken.column), expression())
+        }
         return if(match<Newline>()) {
             val statements = mutableListOf<Stmt>()
             while (!check<End>() && !check<Else>() && !isAtEnd()) {
@@ -258,7 +389,11 @@ class Parser(val tokens: List<Token>) {
 
     private fun whileStatement(): Stmt {
         val whileToken = advance()
-        val expr = expression()
+        val expr = if (whileToken is Token.While) {
+            expression()
+        } else {
+            Unary(Token.Not().new(whileToken.line, whileToken.column), expression())
+        }
         return if(match<Newline>()) {
             val statements = mutableListOf<Stmt>()
             while (!check<End>() && !isAtEnd()) {
@@ -332,9 +467,11 @@ class Parser(val tokens: List<Token>) {
         val subToken = advance()
         val name = eat<Identifier>()
         val args = mutableListOf<Identifier>()
-        do {
-            args.add(eat())
-        } while (match<Comma>())
+        if(!check<Newline>()) {
+            do {
+                args.add(eat())
+            } while (match<Comma>())
+        }
         return if(match<Newline>()) {
             val statements = mutableListOf<Stmt>()
             while (!check<End>() && !isAtEnd()) {
@@ -347,5 +484,76 @@ class Parser(val tokens: List<Token>) {
             val body = statement()
             Sub(name, args, body, subToken.line, subToken.column)
         }
+    }
+
+    private fun selectStatement(): Stmt {
+        val selectToken = advance()
+        eat<Newline>()
+        val cases = mutableListOf<Pair<Expr, Stmt>>()
+        while (!check<End>() && !isAtEnd() && !check<Else>()) {
+            eat<Case>()
+            val expr = expression()
+            if (match<Arrow>()) {
+                val body = statement()
+                cases.add(Pair(expr, body))
+            } else {
+                eat<Newline>()
+                val statements = mutableListOf<Stmt>()
+                while (!check<End>() && !check<Case>() && !check<Else>() && !isAtEnd()) {
+                    statements.add(statement())
+                }
+                cases.add(Pair(expr, Block(statements)))
+            }
+        }
+        val elseBranch = if (match<Else>()) {
+            if (match<Arrow>()) {
+                statement()
+            } else {
+                eat<Newline>()
+                val statements = mutableListOf<Stmt>()
+                while (!check<End>() && !isAtEnd()) {
+                    statements.add(statement())
+                }
+                Block(statements)
+            }
+        } else null
+        eat<End>()
+        return Select(cases, elseBranch, selectToken.line, selectToken.column)
+    }
+
+    private fun switchStatement(): Stmt {
+        val switchToken = advance()
+        val expr = expression()
+        eat<Newline>()
+        val cases = mutableListOf<Pair<Expr, Stmt>>()
+        while (!check<End>() && !isAtEnd() && !check<Else>()) {
+            eat<Case>()
+            val expr = expression()
+            if (match<Arrow>()) {
+                val body = statement()
+                cases.add(Pair(expr, body))
+            } else {
+                eat<Newline>()
+                val statements = mutableListOf<Stmt>()
+                while (!check<End>() && !check<Case>() && !check<Else>() && !isAtEnd()) {
+                    statements.add(statement())
+                }
+                cases.add(Pair(expr, Block(statements)))
+            }
+        }
+        val elseBranch = if (match<Else>()) {
+            if (match<Arrow>()) {
+                statement()
+            } else {
+                eat<Newline>()
+                val statements = mutableListOf<Stmt>()
+                while (!check<End>() && !isAtEnd()) {
+                    statements.add(statement())
+                }
+                Block(statements)
+            }
+        } else null
+        eat<End>()
+        return Switch(expr, cases, elseBranch, switchToken.line, switchToken.column)
     }
 }

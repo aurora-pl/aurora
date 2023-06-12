@@ -9,8 +9,10 @@ sealed class Token(
 ) {
     // Keywords
     class If : Token(lexeme = "if")
+    class Unless : Token(lexeme = "unless")
     class Else : Token(lexeme = "else")
     class While : Token(lexeme = "while")
+    class Until : Token(lexeme = "until")
     class For : Token(lexeme = "for")
     class Fn : Token(lexeme = "fn")
     class Sub : Token(lexeme = "sub")
@@ -18,6 +20,11 @@ sealed class Token(
     class Break : Token(lexeme = "break")
     class Continue : Token(lexeme = "continue")
     class End : Token(lexeme = "end")
+    class Select : Token(lexeme = "select")
+    class Switch : Token(lexeme = "switch")
+    class Case : Token(lexeme = "case")
+    class Do : Token(lexeme = "do")
+    class Lambda : Token(lexeme = "lambda")
 
     // Operators
     class Plus : Token(lexeme = "+")
@@ -34,12 +41,15 @@ sealed class Token(
     class And : Token(lexeme = "and")
     class Or : Token(lexeme = "or")
     class Not : Token(lexeme = "not")
+    class Dot : Token(lexeme = ".")
 
     // Punctuation
     class LParen : Token(lexeme = "(")
     class RParen : Token(lexeme = ")")
     class LBrace : Token(lexeme = "{")
     class RBrace : Token(lexeme = "}")
+    class LBracket : Token(lexeme = "[")
+    class RBracket : Token(lexeme = "]")
     class Comma : Token(lexeme = ",")
     class Colon : Token(lexeme = ":")
     class Newline : Token(lexeme = "\n")
@@ -123,6 +133,8 @@ class Lexer(private val input: String) {
             ')' -> Token.RParen().new(line = line, column = column)
             '{' -> Token.LBrace().new(line = line, column = column)
             '}' -> Token.RBrace().new(line = line, column = column)
+            '[' -> Token.LBracket().new(line = line, column = column)
+            ']' -> Token.RBracket().new(line = line, column = column)
             ',' -> Token.Comma().new(line = line, column = column)
             '-' ->
                 if (match('='))
@@ -150,10 +162,15 @@ class Lexer(private val input: String) {
                     column = column
                 )
 
+            '.' -> Token.Dot().new(line = line, column = column)
+
             '!' ->
                 if (match('='))
                     Token.NotEq().new(line = line, column = column)
-                else throw Exception("Unexpected character: $c") // TODO: error handling
+                else {
+                    Error(line, column, "unexpected character: $c", source).print()
+                    throw KillStage
+                }
 
             '=' ->
                 if (match('='))
@@ -213,11 +230,23 @@ class Lexer(private val input: String) {
 
             '"' -> string('"')
             '`' -> string('`')
+            '.' -> {
+                // label
+                while (isAlphabetic(peek().code) || isDigit(peek()) || peek() == '_' || peek() == '!' || peek() == '?')
+                    advance()
+                Token.StringLiteral().new(
+                    literal = input.substring(start, current).trim().substring(1),
+                    lexeme = input.substring(start, current).trim(),
+                    line = line,
+                    column = column
+                )
+            }
 
             else -> {
                 if (isDigit(c)) return number()
                 if (isAlphabetic(c.code)) return identifier()
-                throw Exception("Unexpected character: $c") // TODO: error handling
+                Error(line, column, "unexpected character: $c", source).print()
+                throw KillStage
             }
         }
     }
@@ -236,20 +265,23 @@ class Lexer(private val input: String) {
                 advance()
         }
         return Token.Number().new(
-            literal = input.substring(start + 1, current).toDouble(),
-            lexeme = input.substring(start + 1, current),
+            literal = input.substring(start, current).trim().toDouble(),
+            lexeme = input.substring(start, current).trim(),
             line = line,
             column = column
         )
     }
 
     private fun identifier(): Token {
-        while (isAlphabetic(peek().code) || isDigit(peek()))
+        val column = column
+        while (isAlphabetic(peek().code) || isDigit(peek()) || peek() == '_' || peek() == '!' || peek() == '?')
             advance()
         return when (val text = input.substring(start, current).trim()) {
             "if" -> Token.If().new(line = line, column = column)
+            "unless" -> Token.Unless().new(line = line, column = column)
             "else" -> Token.Else().new(line = line, column = column)
             "while" -> Token.While().new(line = line, column = column)
+            "until" -> Token.Until().new(line = line, column = column)
             "for" -> Token.For().new(line = line, column = column)
             "fn" -> Token.Fn().new(line = line, column = column)
             "sub" -> Token.Sub().new(line = line, column = column)
@@ -262,7 +294,12 @@ class Lexer(private val input: String) {
             "or" -> Token.Or().new(line = line, column = column)
             "not" -> Token.Not().new(line = line, column = column)
             "end" -> Token.End().new(line = line, column = column)
-            else -> Token.Identifier().new(lexeme = text, line = line, column = column)
+            "select" -> Token.Select().new(line = line, column = column)
+            "switch" -> Token.Switch().new(line = line, column = column)
+            "case" -> Token.Case().new(line = line, column = column)
+            "do" -> Token.Do().new(line = line, column = column)
+            "lambda" -> Token.Lambda().new(line = line, column = column)
+            else -> Token.Identifier().new(lexeme = text, literal = text, line = line, column = column)
         }
     }
 
@@ -275,12 +312,15 @@ class Lexer(private val input: String) {
             advance()
         }
         if (isAtEnd()) {
-            throw Exception("Unterminated string.") // TODO: error handling
+            Error(line, column, "unterminated string", source)
+            throw KillStage
         }
         advance()
         return Token.StringLiteral().new(
-            lexeme = input.substring(start + 1, current),
-            literal = input.substring(start + 2, current - 1),
+            lexeme = input.substring(start, current).trim(),
+            literal = input.substring(start, current).trim().run {
+                substring(1, length - 1)
+            },
             line = line,
             column = column
         )
