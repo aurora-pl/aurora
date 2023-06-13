@@ -230,8 +230,9 @@ class Lexer(private val input: String) {
 
             '"' -> string('"')
             '`' -> string('`')
-            '.' -> {
+            '\'' -> {
                 // label
+                val column = column
                 while (isAlphabetic(peek().code) || isDigit(peek()) || peek() == '_' || peek() == '!' || peek() == '?')
                     advance()
                 Token.StringLiteral().new(

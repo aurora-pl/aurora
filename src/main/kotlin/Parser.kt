@@ -79,16 +79,24 @@ class Parser(val tokens: List<Token>) {
                 val identifier = eat<Identifier>()
                 when (peek()) {
                     is Colon -> {
-                        eat<Colon>()
                         var list: Expr = Variable(identifier)
-                        var index = expression()
+                        var index: Expr? = null
+                        var i = 0
                         while(check<Colon>()) {
-                            list = Index(list, index)
-                            index = expression()
+                            eat<Colon>()
+                            if(i > 0) {
+                                list = Index(list, index!!)
+                            }
+                            index = if(match<Colon>()) {
+                                Literal(eat<Identifier>().run { StringLiteral().new(literal, line, column) })
+                            } else {
+                                primary()
+                            }
+                            i++
                         }
-                        match<Assign>()
-                        val value = expression()
-                        AssignIndex(list, index, value, identifier.line, identifier.column)
+                        eat<Token.Assign>()
+                        val value: Expr = expression()
+                        AssignIndex(list, index!!, value, index.line, index.column)
                     }
                     is Token.Assign -> {
                         eat<Token.Assign>()
@@ -142,7 +150,7 @@ class Parser(val tokens: List<Token>) {
                 expr
             }
             is LBrace -> {
-                eat<LBrace>()
+                val (line, col) = eat<LBrace>().run { Pair(line, column) }
                 val pairs = mutableListOf<Pair<Expr, Expr>>()
                 if(!check<RBrace>()) {
                     pairs.add(Pair(primary().also { eat<Arrow>() }, expression()))
@@ -151,10 +159,10 @@ class Parser(val tokens: List<Token>) {
                     }
                 }
                 eat<RBrace>()
-                MapLiteral(pairs)
+                MapLiteral(pairs, line, col)
             }
             is LBracket -> {
-                eat<LBracket>()
+                val (line, col) = eat<LBracket>().run { Pair(line, column) }
                 val exprs = mutableListOf<Expr>()
                 if(!check<RBracket>()) {
                     exprs.add(expression())
@@ -163,7 +171,7 @@ class Parser(val tokens: List<Token>) {
                     }
                 }
                 eat<RBracket>()
-                ListLiteral(exprs)
+                ListLiteral(exprs, line, col)
             }
             is Identifier -> {
                 val identifier = eat<Identifier>()

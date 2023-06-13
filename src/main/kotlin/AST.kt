@@ -29,7 +29,6 @@ abstract class Stmt(open val line: Int, open val column: Int) {
         fun visit(stmt: AssignIndex): T;
         fun visit(stmt: CallStmt): T;
         fun visit(stmt: Block): T;
-
         fun visit(stmt: Switch): T;
         fun visit(stmt: Select): T;
     }
@@ -61,8 +60,8 @@ data class Variable(val name: Token)
         visitor.visit(this)
 }
 
-data class ListLiteral(val elements: List<Expr>)
-    : Expr(elements.first().line, elements.first().column) {
+data class ListLiteral(val elements: List<Expr>, override val line: Int, override val column: Int)
+    : Expr(line, column) {
     override fun <T> accept(visitor: Visitor<T>): T =
         visitor.visit(this)
 }
@@ -85,8 +84,8 @@ data class Index(val list: Expr, val index: Expr)
         visitor.visit(this)
 }
 
-data class MapLiteral(val pairs: List<Pair<Expr, Expr>>)
-    : Expr(pairs.first().first.line, pairs.first().first.column) {
+data class MapLiteral(val pairs: List<Pair<Expr, Expr>>, override val line: Int, override val column: Int)
+    : Expr(line, column) {
     override fun <T> accept(visitor: Visitor<T>): T =
         visitor.visit(this)
 }

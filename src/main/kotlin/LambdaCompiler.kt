@@ -498,6 +498,7 @@ class LambdaCompiler : Expr.Visitor<() -> Any>, Stmt.Visitor<() -> Boolean> {
         val value = stmt.value.accept(this)
         return { ->
             (list() as? MutableList<Any>)?.set((index() as Number).toInt(), value()) ?:
+            (list() as? MutableMap<Any, Any>)?.set(index(), value()) ?:
             Error(stmt.line, stmt.column, "cannot assign to index of non-list", source).print()
                 .also { throw KillStage }
             false

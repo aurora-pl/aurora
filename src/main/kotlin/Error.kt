@@ -16,6 +16,8 @@ data class Error(val line: Int, val col: Int, val message: String, val source: S
         println("| $line_to_print")
         print("\u001B[31m")
         for (i in 0 until col) {
+            if (i >= line_to_print.length)
+                break
             if(line_to_print[i] == '\t')
                 print("\t")
             else
