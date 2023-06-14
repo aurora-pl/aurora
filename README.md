@@ -8,7 +8,7 @@ A programming language for general scripting and automation.
 
 <img src="https://github.com/aurora-pl/resources/raw/171834311f8be5b95f3e64d49e6536bdc10b1834/carbon(1).png" width="50%" align="left">
 
-Automate tasks and parse text with ease. The Aurora Standard Library* provides you with all you need to get started.
+Automate tasks and parse text with ease. The Aurora Standard Library provides you with all you need to get started.
 ```
 fn parse_phone number
   pattern = "({}) {}-{}"
