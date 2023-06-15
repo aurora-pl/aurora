@@ -143,6 +143,29 @@ class Parser(val tokens: List<Token>) {
                 val token = eat<StringLiteral>()
                 Literal(token)
             }
+            is Fmt -> {
+                val token = eat<Fmt>()
+                if (!check<StringLiteral>()) {
+                    Error(token.line, token.column, "expected string literal but got ${peek().javaClass.simpleName} instead", source).print()
+                    throw KillStage
+                }
+                val string = eat<StringLiteral>()
+                // turn "...{expression}..." into "..." + expression + "...", ignoring escaped braces, but keeping the braces around the expression
+                val parts = (string.literal as String).split(Regex("(?<!\\\\)((?=\\{)|(?<=\\}))"))
+                var left: Expr = Literal(StringLiteral().new("", string.line, string.column))
+                for (part in parts) {
+                    if (part.startsWith("{") && part.endsWith("}")) {
+                        val lexer = Lexer(part.substring(1, part.length - 1))
+                        val tokens = lexer.scanTokens().map { it.also { it.line = string.line; it.column = string.column + (string.literal as String).indexOf(part) + it.column} }
+                        val parser = Parser(tokens)
+                        val expr = parser.expression()
+                        left = Binary(left, Plus().new(string.line, string.column + (string.literal as String).indexOf(part)), expr)
+                    } else {
+                        left = Binary(left, Plus().new(string.line, string.column + (string.literal as String).indexOf(part)), Literal(StringLiteral().new(part.replace("\\{", "{"), string.line, string.column + (string.literal as String).indexOf(part))))
+                    }
+                }
+                left
+            }
             is LParen -> {
                 eat<LParen>()
                 val expr = expression()
@@ -285,8 +308,17 @@ class Parser(val tokens: List<Token>) {
         return call()
     }
 
+    private fun not(): Expr {
+        if (check<Not>()) {
+            val operator = advance()
+            val right = not()
+            return Unary(operator, right)
+        }
+        return unary()
+    }
+
     private fun multiplication(): Expr {
-        var expr = unary()
+        var expr = not()
         while (check<Star>() || check<Slash>() || check<Dot>() || check<Arrow>()) {
             val operator = advance()
             val right = unary()

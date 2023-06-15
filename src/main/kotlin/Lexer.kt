@@ -25,6 +25,7 @@ sealed class Token(
     class Case : Token(lexeme = "case")
     class Do : Token(lexeme = "do")
     class Lambda : Token(lexeme = "lambda")
+    class Fmt : Token(lexeme = "fmt")
 
     // Operators
     class Plus : Token(lexeme = "+")
@@ -300,11 +301,13 @@ class Lexer(private val input: String) {
             "case" -> Token.Case().new(line = line, column = column)
             "do" -> Token.Do().new(line = line, column = column)
             "lambda" -> Token.Lambda().new(line = line, column = column)
+            "fmt" -> Token.Fmt().new(line = line, column = column)
             else -> Token.Identifier().new(lexeme = text, literal = text, line = line, column = column)
         }
     }
 
     private fun string(delim: Char): Token {
+        val startColumn = column
         while (peek() != delim && !isAtEnd()) {
             if (peek() == '\n') {
                 line++
@@ -321,9 +324,9 @@ class Lexer(private val input: String) {
             lexeme = input.substring(start, current).trim(),
             literal = input.substring(start, current).trim().run {
                 substring(1, length - 1)
-            },
+            }.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r"),
             line = line,
-            column = column
+            column = startColumn
         )
     }
 }

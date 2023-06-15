@@ -7,7 +7,7 @@ operator fun Any.plus(other: Any): Any {
     return when (this) {
         is Int -> this + other as Int
         is Double -> this + other as Double
-        is String -> this + other as String
+        is String -> this + other.toString()
         else -> throw Exception("invalid operand types for +: ${this::class} and ${other::class}")
     }
 }
